@@ -36,6 +36,8 @@ jobs:
 
       - name: Build static site
         run: npm run build:pages
+        env:
+          VITE_COACH_API_URL: ${{ vars.VITE_COACH_API_URL }}
 
       - name: Add SPA fallback
         run: cp dist-pages/index.html dist-pages/404.html

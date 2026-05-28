@@ -36,6 +36,18 @@ export type CoachInput = z.infer<typeof CoachInputSchema>;
 export type CoachReply = { reply: string; error: string | null };
 export type CoachEnv = Record<string, unknown> | undefined;
 
+type GeminiResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{ text?: string }>;
+    };
+  }>;
+  error?: {
+    message?: string;
+    status?: string;
+  };
+};
+
 function readEnv(env: CoachEnv, key: string): string | undefined {
   const boundValue = env?.[key];
   if (typeof boundValue === "string" && boundValue.trim()) {
@@ -48,14 +60,31 @@ function readEnv(env: CoachEnv, key: string): string | undefined {
   return processValue?.trim() || undefined;
 }
 
+function buildGeminiUrl(env: CoachEnv): string {
+  const apiBase =
+    readEnv(env, "GEMINI_API_BASE_URL") ?? "https://generativelanguage.googleapis.com";
+  const model = (readEnv(env, "GEMINI_MODEL") ?? "gemini-2.5-flash").replace(/^models\//, "");
+  return `${apiBase.replace(/\/$/, "")}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+}
+
+function toGeminiContents(messages: CoachInput["messages"]) {
+  const firstUserIndex = messages.findIndex((message) => message.role === "user");
+  const conversation = firstUserIndex === -1 ? messages : messages.slice(firstUserIndex);
+
+  return conversation
+    .filter((message) => message.role !== "system")
+    .map((message) => ({
+      role: message.role === "assistant" ? "model" : "user",
+      parts: [{ text: message.content }],
+    }));
+}
+
 export async function getCoachReply(input: CoachInput, env?: CoachEnv): Promise<CoachReply> {
   const data = CoachInputSchema.parse(input);
-  const apiKey = readEnv(env, "AI_GATEWAY_API_KEY");
-  const apiUrl = readEnv(env, "AI_GATEWAY_URL") ?? "https://api.openai.com/v1/chat/completions";
-  const model = readEnv(env, "AI_MODEL") ?? "gpt-4o-mini";
+  const apiKey = readEnv(env, "GEMINI_API_KEY");
 
   if (!apiKey) {
-    return { reply: "", error: "AI is not configured. Please contact support." };
+    return { reply: "", error: "Gemini is not configured. Please contact support." };
   }
 
   const ctx = data.context ?? {};
@@ -70,15 +99,22 @@ User profile:
 ${ctxLines || "(no profile data yet)"}`;
 
   try {
-    const res = await fetch(apiUrl, {
+    const res = await fetch(buildGeminiUrl(env), {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        "x-goog-api-key": apiKey,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model,
-        messages: [{ role: "system", content: system }, ...data.messages],
+        systemInstruction: {
+          parts: [{ text: system }],
+        },
+        contents: toGeminiContents(data.messages),
+        generationConfig: {
+          temperature: 0.7,
+          topP: 0.9,
+          maxOutputTokens: 800,
+        },
       }),
     });
 
@@ -88,12 +124,23 @@ ${ctxLines || "(no profile data yet)"}`;
       if (res.status === 402)
         return { reply: "", error: "AI credits exhausted. Please add credits to continue." };
       const text = await res.text();
-      console.error("AI gateway error:", res.status, text);
+      console.error("Gemini API error:", res.status, text);
       return { reply: "", error: "The AI coach is temporarily unavailable." };
     }
 
-    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const reply = json.choices?.[0]?.message?.content ?? "";
+    const json = (await res.json()) as GeminiResponse;
+    const reply =
+      json.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text)
+        .filter(Boolean)
+        .join("\n")
+        .trim() ?? "";
+
+    if (!reply) {
+      console.error("Gemini API returned no text:", JSON.stringify(json));
+      return { reply: "", error: "The AI coach could not generate a response." };
+    }
+
     return { reply, error: null };
   } catch (error) {
     console.error("getCoachReply failed:", error);

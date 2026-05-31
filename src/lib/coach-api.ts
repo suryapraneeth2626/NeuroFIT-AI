@@ -60,6 +60,14 @@ function readEnv(env: CoachEnv, key: string): string | undefined {
   return processValue?.trim() || undefined;
 }
 
+function readGeminiApiKey(env: CoachEnv): string | undefined {
+  return (
+    readEnv(env, "GEMINI_API_KEY") ??
+    readEnv(env, "GOOGLE_GEMINI_API_KEY") ??
+    readEnv(env, "GOOGLE_API_KEY")
+  );
+}
+
 function buildGeminiUrl(env: CoachEnv): string {
   const apiBase =
     readEnv(env, "GEMINI_API_BASE_URL") ?? "https://generativelanguage.googleapis.com";
@@ -81,10 +89,10 @@ function toGeminiContents(messages: CoachInput["messages"]) {
 
 export async function getCoachReply(input: CoachInput, env?: CoachEnv): Promise<CoachReply> {
   const data = CoachInputSchema.parse(input);
-  const apiKey = readEnv(env, "GEMINI_API_KEY");
+  const apiKey = readGeminiApiKey(env);
 
   if (!apiKey) {
-    return { reply: "", error: "Gemini is not configured. Please contact support." };
+    return { reply: "", error: "Gemini API key is not configured. Please contact support." };
   }
 
   const ctx = data.context ?? {};

@@ -4,8 +4,10 @@ import tsConfigPaths from "vite-tsconfig-paths";
 import { defineConfig } from "vite";
 import { fileURLToPath, URL } from "node:url";
 
+const repositoryName = process.env.GITHUB_REPOSITORY?.split("/").at(1) ?? "NeuroFIT-";
+
 export default defineConfig({
-  base: "/NeuroFIT-/",
+  base: `/${repositoryName}/`,
   plugins: [react(), tailwindcss(), tsConfigPaths()],
   resolve: {
     alias: {

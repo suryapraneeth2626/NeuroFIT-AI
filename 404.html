@@ -12,20 +12,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module">
-      const isGitHubPages = location.hostname.endsWith("github.io");
-
-      if (isGitHubPages) {
-        const stylesheet = document.createElement("link");
-        stylesheet.rel = "stylesheet";
-        stylesheet.href = "/NeuroFIT-/assets/styles.css";
-        document.head.append(stylesheet);
-
-        const pagesEntry = "/NeuroFIT-/assets/pages-main.js";
-        await import(/* @vite-ignore */ pagesEntry);
-      } else {
-        await import("/src/pages-main.tsx");
-      }
-    </script>
+    <script type="module" src="/src/pages-main.tsx"></script>
   </body>
 </html>
